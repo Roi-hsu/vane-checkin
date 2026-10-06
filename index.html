@@ -244,10 +244,7 @@ $('mCancel').addEventListener('click', function () { $('manual').classList.remov
 $('mSubmit').addEventListener('click', function () {
   var n = $('mName').value.trim(), em = $('mEmail').value.trim(), ph = $('mPhone').value.trim();
   if (!n) { $('mMsg').textContent = '請輸入姓名'; return; }
-  if (!em) { $('mMsg').textContent = '請輸入信箱'; return; }
-  if (!/^\S+@\S+\.\S+$/.test(em)) { $('mMsg').textContent = '信箱格式不正確'; return; }
-  if (!ph) { $('mMsg').textContent = '請輸入手機'; return; }
-  if (!/^[0-9+\-\s()]{8,}$/.test(ph)) { $('mMsg').textContent = '手機格式不正確'; return; }
+
   var mode = MODE, tx = T[mode];
   $('mSubmit').disabled = true; $('mMsg').textContent = '登記中⋯';
   api({ action: 'register', mode: mode, name: n, email: em, phone: ph }, function (res) {
