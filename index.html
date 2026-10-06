@@ -39,6 +39,10 @@ input.txt:focus { outline:none; border-color:var(--teal); box-shadow:0 0 0 3px r
 #result.warn { background:var(--warn); border-color:transparent; color:#fff; }
 #result.err { background:var(--err); border-color:transparent; color:#fff; }
 #result.busy { color:var(--teal); }
+body[data-mode="checkin"] { --teal:#f0b429; }
+#modeBar { width:100%; display:flex; gap:6px; padding:4px; border-radius:99px; background:#0b1412; border:1px solid rgba(255,255,255,.12); }
+#modeBar button { flex:1; font:inherit; font-size:15px; font-weight:700; letter-spacing:.15em; padding:10px 6px; border:0; border-radius:99px; background:transparent; color:rgba(255,255,255,.55); cursor:pointer; }
+#modeBar button.on { background:var(--teal); color:#1a1200; }
 #log { width:100%; display:flex; flex-direction:column; gap:6px; }
 .entry { display:flex; justify-content:space-between; gap:10px; align-items:center; padding:9px 12px; border-radius:10px; font-size:14px; background:#0b1412; border:1px solid rgba(255,255,255,.1); }
 .entry b { font-weight:700; }
@@ -66,6 +70,10 @@ input.txt:focus { outline:none; border-color:var(--teal); box-shadow:0 0 0 3px r
   </section>
 
   <section class="screen" id="scanScreen">
+    <div id="modeBar">
+      <button type="button" data-mode="arrive">報到</button>
+      <button type="button" data-mode="checkin">抽獎資格核銷</button>
+    </div>
     <div id="viewport">
       <div id="reader"></div>
       <div class="frame"></div>
@@ -74,7 +82,7 @@ input.txt:focus { outline:none; border-color:var(--teal); box-shadow:0 0 0 3px r
     <div id="result">請把參加者的 QR 對準框內</div>
     <div id="log"></div>
     <div class="row">
-      <span id="counter">本機已核銷 0 位</span>
+      <span id="counter"></span>
       <span>
         <button class="btn ghost" id="manualBtn" type="button">現場手動登記</button>
         <button class="btn ghost" id="logoutBtn" type="button">登出</button>
@@ -85,11 +93,11 @@ input.txt:focus { outline:none; border-color:var(--teal); box-shadow:0 0 0 3px r
 
 <div id="manual">
   <div class="sheet">
-    <h2>現場手動登記</h2>
+    <h2 id="mTitle">現場手動登記</h2>
     <input class="txt plain" id="mName" type="text" placeholder="姓名" autocomplete="off">
     <input class="txt plain" id="mContact" type="text" placeholder="聯絡方式（手機或信箱，可留空）" autocomplete="off">
     <div class="msg" id="mMsg"></div>
-    <button class="btn" id="mSubmit" type="button">登記並核銷</button>
+    <button class="btn" id="mSubmit" type="button">登記並報到</button>
     <button class="btn ghost" id="mCancel" type="button">取消</button>
   </div>
 </div>
@@ -99,7 +107,7 @@ input.txt:focus { outline:none; border-color:var(--teal); box-shadow:0 0 0 3px r
 var API = 'https://script.google.com/macros/s/AKfycbzkWwVF-LSRqI5HwE6Vm4C41u1D0icm0cFbtlg9CXpfr2FdHDZiwkI5CNkIY7eCEtFw/exec';
 var PIN_KEY = 'vane_staff_pin', PIN_TTL_MS = 12 * 3600 * 1000;
 var $ = function (id) { return document.getElementById(id); };
-var scanner = null, scanning = false, lastAt = 0, okCount = 0, cbSeq = 0;
+var scanner = null, scanning = false, lastAt = 0, cbSeq = 0;
 
 function savePin(p) { try { localStorage.setItem(PIN_KEY, JSON.stringify({ p: p, t: Date.now() })); } catch (e) {} }
 function loadPin() {
@@ -149,46 +157,65 @@ function parseCode(text) {
   return '';
 }
 
+var MODE_KEY = 'vane_mode', MODE = 'arrive', counts = { arrive: 0, checkin: 0 };
+var T = {
+  arrive:  { ok: '報到成功', dup: '已報到過', reg: '登記並報到成功', btn: '登記並報到', title: '現場手動登記（報到）', cnt: '本機已報到', action: 'arrive' },
+  checkin: { ok: '核銷成功', dup: '已登記過', reg: '登記並核銷成功', btn: '登記並核銷', title: '現場手動登記（抽獎資格核銷）', cnt: '本機已核銷', action: 'checkin' }
+};
+function setMode(m) {
+  MODE = m === 'checkin' ? 'checkin' : 'arrive';
+  try { localStorage.setItem(MODE_KEY, MODE); } catch (e) {}
+  document.body.setAttribute('data-mode', MODE);
+  var bs = document.querySelectorAll('#modeBar button');
+  for (var i = 0; i < bs.length; i++) bs[i].classList.toggle('on', bs[i].getAttribute('data-mode') === MODE);
+  $('counter').textContent = T[MODE].cnt + ' ' + counts[MODE] + ' 位';
+  $('mTitle').textContent = T[MODE].title; $('mSubmit').textContent = T[MODE].btn;
+  setResult('', '請把參加者的 QR 對準框內'); renderLog();
+}
+$('modeBar').addEventListener('click', function (ev) { var b = ev.target.closest ? ev.target.closest('button') : null; if (b) setMode(b.getAttribute('data-mode')); });
+
 var entries = {}, order = [];
 function renderLog() {
   var h = '';
-  order.slice(-6).reverse().forEach(function (c) {
-    var e = entries[c], icon = e.st === 'ok' ? '✓' : e.st === 'warn' ? '!' : e.st === 'err' ? '✕' : '…';
-    h += '<div class="entry ' + (e.st === 'pend' ? 'pend' : e.st) + '" data-code="' + esc(c) + '"><span><b>' + icon + ' ' + esc(e.label) + '</b>' + (e.label !== c ? '<span class="code">' + esc(c) + '</span>' : '') + '</span><span>' + esc(e.note) + '</span></div>';
+  order.filter(function (k) { return entries[k].mode === MODE; }).slice(-6).reverse().forEach(function (k) {
+    var e = entries[k], icon = e.st === 'ok' ? '✓' : e.st === 'warn' ? '!' : e.st === 'err' ? '✕' : '…';
+    h += '<div class="entry ' + (e.st === 'pend' ? 'pend' : e.st) + '" data-key="' + esc(k) + '"><span><b>' + icon + ' ' + esc(e.label) + '</b>' + (e.label !== e.code ? '<span class="code">' + esc(e.code) + '</span>' : '') + '</span><span>' + esc(e.note) + '</span></div>';
   });
   $('log').innerHTML = h;
 }
 $('log').addEventListener('click', function (ev) {
   var n = ev.target.closest ? ev.target.closest('.entry') : null;
-  if (n && n.className.indexOf('err') > -1) { var c = n.getAttribute('data-code'); if (entries[c]) { entries[c].st = 'pend'; entries[c].note = '重試中⋯'; renderLog(); sendCheckin(c); } }
+  if (n && n.className.indexOf('err') > -1) { var k = n.getAttribute('data-key'); if (entries[k]) { entries[k].st = 'pend'; entries[k].note = '重試中⋯'; renderLog(); sendScan(k); } }
 });
 
 function onScan(text) {
   var code = parseCode(text), now = Date.now();
   if (!code) { if (now - lastAt > 2500) { lastAt = now; setResult('err', '這不是參加者的 QR<small>' + esc(String(text).slice(0, 60)) + '</small>'); buzz(200); } return; }
-  var e = entries[code];
+  var key = MODE + '|' + code, e = entries[key];
   if (e && (e.st === 'pend' || (e.st !== 'err' && now - e.at < 60000))) { return; }
-  entries[code] = { st: 'pend', label: code, note: '核銷中⋯', at: now };
-  order = order.filter(function (c) { return c !== code; }); order.push(code);
-  setResult('busy', '已掃到 ' + esc(code) + '<small>核銷中⋯可以繼續掃下一位</small>'); beep(660, 0.06); buzz(30);
-  renderLog(); sendCheckin(code);
+  entries[key] = { st: 'pend', label: code, code: code, mode: MODE, note: '處理中⋯', at: now };
+  order = order.filter(function (k) { return k !== key; }); order.push(key);
+  setResult('busy', '已掃到 ' + esc(code) + '<small>處理中⋯可以繼續掃下一位</small>'); beep(660, 0.06); buzz(30);
+  renderLog(); sendScan(key);
 }
 
-function sendCheckin(code) {
-  api({ action: 'checkin', code: code }, function (res) {
-    var e = entries[code]; e.at = Date.now();
+function sendScan(key) {
+  var e0 = entries[key], mode = e0.mode, code = e0.code, tx = T[mode];
+  api({ action: tx.action, code: code }, function (res) {
+    var e = entries[key]; e.at = Date.now();
+    var show_ = mode === MODE;
     if (res && res.success && !res.alreadyChecked) {
-      okCount++; $('counter').textContent = '本機已核銷 ' + okCount + ' 位';
-      e.st = 'ok'; e.label = res.name; e.note = '核銷成功';
-      setResult('ok', '核銷成功<small>' + esc(res.name) + '（' + esc(code) + '）</small>'); beep(880, 0.15); buzz(60);
+      counts[mode]++; if (show_) $('counter').textContent = tx.cnt + ' ' + counts[mode] + ' 位';
+      e.st = 'ok'; e.label = res.name; e.note = tx.ok;
+      if (show_) setResult('ok', tx.ok + '<small>' + esc(res.name) + '（' + esc(code) + '）</small>'); beep(880, 0.15); buzz(60);
     } else if (res && res.alreadyChecked) {
-      e.st = 'warn'; e.label = res.name; e.note = '已登記過';
-      setResult('warn', '已登記過<small>' + esc(res.name) + '（' + esc(code) + '）</small>'); beep(440, 0.25); buzz([80, 60, 80]);
+      e.st = 'warn'; e.label = res.name; e.note = tx.dup;
+      if (show_) setResult('warn', tx.dup + '<small>' + esc(res.name) + '（' + esc(code) + '）</small>'); beep(440, 0.25); buzz([80, 60, 80]);
     } else if (res && res.message === 'PIN 錯誤') {
       clearPin(); PIN = ''; stopScan(); show('pinScreen'); $('pinMsg').textContent = 'PIN 已失效，請重新輸入';
     } else {
-      e.st = 'err'; e.note = res && res.net ? '連線失敗，點此重試' : esc((res && res.message) || '核銷失敗');
-      setResult('err', esc((res && res.message) || '核銷失敗') + '<small>' + esc(code) + (res && res.net ? '（點下方紅色項目重試）' : '') + '</small>'); beep(220, 0.35); buzz(250);
+      e.st = 'err'; e.note = res && res.net ? '連線失敗，點此重試' : (res && res.message) || '處理失敗';
+      if (show_) setResult('err', esc((res && res.message) || '處理失敗') + '<small>' + esc(code) + (res && res.net ? '（點下方紅色項目重試）' : '') + '</small>'); beep(220, 0.35); buzz(250);
     }
     renderLog();
   });
@@ -215,17 +242,19 @@ $('manualBtn').addEventListener('click', function () { $('manual').classList.add
 $('mCancel').addEventListener('click', function () { $('manual').classList.remove('on'); });
 $('mSubmit').addEventListener('click', function () {
   var n = $('mName').value.trim(); if (!n) { $('mMsg').textContent = '請輸入姓名'; return; }
+  var mode = MODE, tx = T[mode];
   $('mSubmit').disabled = true; $('mMsg').textContent = '登記中⋯';
-  api({ action: 'register', name: n, contact: $('mContact').value.trim() }, function (res) {
+  api({ action: 'register', mode: mode, name: n, contact: $('mContact').value.trim() }, function (res) {
     $('mSubmit').disabled = false;
     if (res && res.success) {
-      okCount++; $('counter').textContent = '本機已核銷 ' + okCount + ' 位';
+      counts[mode]++; if (mode === MODE) $('counter').textContent = tx.cnt + ' ' + counts[mode] + ' 位';
       $('manual').classList.remove('on'); $('mName').value = ''; $('mContact').value = '';
-      setResult('ok', '登記並核銷成功<small>' + esc(res.name) + '（' + esc(res.code) + '）</small>'); beep(880, 0.15); buzz(60);
+      setResult('ok', tx.reg + '<small>' + esc(res.name) + '（' + esc(res.code) + '）</small>'); beep(880, 0.15); buzz(60);
     } else { $('mMsg').textContent = (res && res.message) || '登記失敗'; }
   });
 });
 
+try { setMode(localStorage.getItem(MODE_KEY) || 'arrive'); } catch (e) { setMode('arrive'); }
 var saved = loadPin();
 if (saved) tryPin(saved, true);
 </script>
