@@ -95,8 +95,8 @@ body[data-mode="checkin"] { --teal:#f0b429; }
   <div class="sheet">
     <h2 id="mTitle">現場手動登記</h2>
     <input class="txt plain" id="mName" type="text" placeholder="姓名" autocomplete="off">
-    <input class="txt plain" id="mEmail" type="email" inputmode="email" placeholder="信箱（可留空）" autocomplete="off" autocapitalize="off">
-    <input class="txt plain" id="mPhone" type="tel" inputmode="tel" placeholder="手機（可留空）" autocomplete="off">
+    <input class="txt plain" id="mEmail" type="email" inputmode="email" placeholder="信箱" autocomplete="off" autocapitalize="off">
+    <input class="txt plain" id="mPhone" type="tel" inputmode="tel" placeholder="手機" autocomplete="off">
     <div class="msg" id="mMsg"></div>
     <button class="btn" id="mSubmit" type="button">登記並報到</button>
     <button class="btn ghost" id="mCancel" type="button">取消</button>
@@ -242,10 +242,15 @@ $('logoutBtn').addEventListener('click', function () { clearPin(); PIN = ''; sto
 $('manualBtn').addEventListener('click', function () { $('manual').classList.add('on'); $('mMsg').textContent = ''; $('mName').focus(); });
 $('mCancel').addEventListener('click', function () { $('manual').classList.remove('on'); });
 $('mSubmit').addEventListener('click', function () {
-  var n = $('mName').value.trim(); if (!n) { $('mMsg').textContent = '請輸入姓名'; return; }
+  var n = $('mName').value.trim(), em = $('mEmail').value.trim(), ph = $('mPhone').value.trim();
+  if (!n) { $('mMsg').textContent = '請輸入姓名'; return; }
+  if (!em) { $('mMsg').textContent = '請輸入信箱'; return; }
+  if (!/^\S+@\S+\.\S+$/.test(em)) { $('mMsg').textContent = '信箱格式不正確'; return; }
+  if (!ph) { $('mMsg').textContent = '請輸入手機'; return; }
+  if (!/^[0-9+\-\s()]{8,}$/.test(ph)) { $('mMsg').textContent = '手機格式不正確'; return; }
   var mode = MODE, tx = T[mode];
   $('mSubmit').disabled = true; $('mMsg').textContent = '登記中⋯';
-  api({ action: 'register', mode: mode, name: n, email: $('mEmail').value.trim(), phone: $('mPhone').value.trim() }, function (res) {
+  api({ action: 'register', mode: mode, name: n, email: em, phone: ph }, function (res) {
     $('mSubmit').disabled = false;
     if (res && res.success) {
       counts[mode]++; if (mode === MODE) $('counter').textContent = tx.cnt + ' ' + counts[mode] + ' 位';
