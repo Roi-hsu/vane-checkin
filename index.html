@@ -95,7 +95,8 @@ body[data-mode="checkin"] { --teal:#f0b429; }
   <div class="sheet">
     <h2 id="mTitle">現場手動登記</h2>
     <input class="txt plain" id="mName" type="text" placeholder="姓名" autocomplete="off">
-    <input class="txt plain" id="mContact" type="text" placeholder="聯絡方式（手機或信箱，可留空）" autocomplete="off">
+    <input class="txt plain" id="mEmail" type="email" inputmode="email" placeholder="信箱（可留空）" autocomplete="off" autocapitalize="off">
+    <input class="txt plain" id="mPhone" type="tel" inputmode="tel" placeholder="手機（可留空）" autocomplete="off">
     <div class="msg" id="mMsg"></div>
     <button class="btn" id="mSubmit" type="button">登記並報到</button>
     <button class="btn ghost" id="mCancel" type="button">取消</button>
@@ -244,11 +245,11 @@ $('mSubmit').addEventListener('click', function () {
   var n = $('mName').value.trim(); if (!n) { $('mMsg').textContent = '請輸入姓名'; return; }
   var mode = MODE, tx = T[mode];
   $('mSubmit').disabled = true; $('mMsg').textContent = '登記中⋯';
-  api({ action: 'register', mode: mode, name: n, contact: $('mContact').value.trim() }, function (res) {
+  api({ action: 'register', mode: mode, name: n, email: $('mEmail').value.trim(), phone: $('mPhone').value.trim() }, function (res) {
     $('mSubmit').disabled = false;
     if (res && res.success) {
       counts[mode]++; if (mode === MODE) $('counter').textContent = tx.cnt + ' ' + counts[mode] + ' 位';
-      $('manual').classList.remove('on'); $('mName').value = ''; $('mContact').value = '';
+      $('manual').classList.remove('on'); $('mName').value = ''; $('mEmail').value = ''; $('mPhone').value = '';
       setResult('ok', tx.reg + '<small>' + esc(res.name) + '（' + esc(res.code) + '）</small>'); beep(880, 0.15); buzz(60);
     } else { $('mMsg').textContent = (res && res.message) || '登記失敗'; }
   });
